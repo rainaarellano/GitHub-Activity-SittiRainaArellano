@@ -6,187 +6,124 @@ import {
   TouchableOpacity,
   StyleSheet,
   StatusBar,
+  SafeAreaView,
+  useWindowDimensions,
 } from "react-native";
 
 export default function App() {
+  const { width, height } = useWindowDimensions();
+  const compact = height < 750;
   const [display, setDisplay] = useState("0");
   const [firstOperand, setFirstOperand] = useState(null);
   const [operator, setOperator] = useState(null);
-  const [waitingForSecondOperand, setWaitingForSecondOperand] =
-    useState(false);
+  const [waiting, setWaiting] = useState(false);
   const [calculation, setCalculation] = useState("");
 
   const clear = () => {
     setDisplay("0");
     setFirstOperand(null);
     setOperator(null);
-    setWaitingForSecondOperand(false);
+    setWaiting(false);
     setCalculation("");
   };
 
   const inputDigit = (digit) => {
-    if (display === "Error") {
+    if (waiting) {
       setDisplay(String(digit));
-      setCalculation("");
-      setFirstOperand(null);
-      setOperator(null);
-      setWaitingForSecondOperand(false);
-      return;
-    }
-
-    if (waitingForSecondOperand) {
-      setDisplay(String(digit));
-      setWaitingForSecondOperand(false);
+      setWaiting(false);
     } else {
       setDisplay(display === "0" ? String(digit) : display + digit);
     }
   };
 
   const inputDecimal = () => {
-    if (display === "Error") {
+    if (waiting) {
       setDisplay("0.");
-      setCalculation("");
-      setFirstOperand(null);
-      setOperator(null);
-      setWaitingForSecondOperand(false);
-      return;
-    }
-
-    if (waitingForSecondOperand) {
-      setDisplay("0.");
-      setWaitingForSecondOperand(false);
-      return;
-    }
-
-    if (!display.includes(".")) {
+      setWaiting(false);
+    } else if (!display.includes(".")) {
       setDisplay(display + ".");
     }
   };
 
-  const toggleSign = () => {
-    if (display === "Error" || display === "0") return;
-
-    setDisplay(
-      display.startsWith("-") ? display.slice(1) : "-" + display
-    );
-  };
-
-  const inputPercent = () => {
-    if (display === "Error") return;
-
-    const value = parseFloat(display) / 100;
-    setDisplay(String(value));
-  };
-
-  const calculateResult = (left, right, op) => {
+  const calculate = (a, b, op) => {
     let result;
 
     switch (op) {
       case "+":
-        result = left + right;
+        result = a + b;
         break;
       case "-":
-        result = left - right;
+        result = a - b;
         break;
       case "*":
-        result = left * right;
+        result = a * b;
         break;
       case "/":
-        if (right === 0) return "Error";
-        result = left / right;
+        if (b === 0) return "Error";
+        result = a / b;
         break;
       default:
-        return right;
+        return b;
     }
 
     if (!Number.isFinite(result)) return "Error";
-
     return Math.round((result + Number.EPSILON) * 1e10) / 1e10;
   };
 
-  const performOperation = (nextOperator) => {
+  const operation = (nextOp) => {
     if (display === "Error") return;
 
-    const inputValue = parseFloat(display);
+    const value = parseFloat(display);
 
-    // Replace the operator if another operator is pressed.
-    if (waitingForSecondOperand && nextOperator !== "=") {
-      setOperator(nextOperator);
-
-      if (firstOperand !== null) {
-        setCalculation(`${firstOperand} ${nextOperator}`);
-      }
-
+    if (waiting && nextOp !== "=") {
+      setOperator(nextOp);
+      setCalculation(`${firstOperand} ${nextOp}`);
       return;
     }
 
     if (firstOperand === null) {
-      setFirstOperand(inputValue);
-
-      if (nextOperator !== "=") {
-        setOperator(nextOperator);
-        setCalculation(`${display} ${nextOperator}`);
-        setWaitingForSecondOperand(true);
+      if (nextOp !== "=") {
+        setFirstOperand(value);
+        setOperator(nextOp);
+        setCalculation(`${display} ${nextOp}`);
+        setWaiting(true);
       }
-
       return;
     }
 
-    if (operator && nextOperator === "=") {
+    if (operator && nextOp === "=") {
       const expression = `${firstOperand} ${operator} ${display} =`;
-      const result = calculateResult(
-        firstOperand,
-        inputValue,
-        operator
-      );
-
+      const result = calculate(firstOperand, value, operator);
       setCalculation(expression);
 
       if (result === "Error") {
         setDisplay("Error");
-        setFirstOperand(null);
-        setOperator(null);
-        setWaitingForSecondOperand(false);
-        return;
+      } else {
+        setDisplay(String(result));
       }
 
-      setDisplay(String(result));
       setFirstOperand(null);
       setOperator(null);
-      setWaitingForSecondOperand(true);
+      setWaiting(true);
       return;
     }
 
     if (operator) {
-      const result = calculateResult(
-        firstOperand,
-        inputValue,
-        operator
-      );
+      const result = calculate(firstOperand, value, operator);
 
       if (result === "Error") {
         setDisplay("Error");
         setFirstOperand(null);
         setOperator(null);
-        setWaitingForSecondOperand(false);
+        setWaiting(false);
         return;
       }
 
       setFirstOperand(result);
       setDisplay(String(result));
-      setOperator(nextOperator);
-      setCalculation(`${result} ${nextOperator}`);
-      setWaitingForSecondOperand(true);
-    }
-  };
-
-  const handleEquals = () => {
-    if (
-      operator !== null &&
-      firstOperand !== null &&
-      !waitingForSecondOperand
-    ) {
-      performOperation("=");
+      setOperator(nextOp);
+      setCalculation(`${result} ${nextOp}`);
+      setWaiting(true);
     }
   };
 
@@ -197,76 +134,68 @@ export default function App() {
     }
 
     if (display === "Error") {
-      if (!isNaN(Number(btn)) || btn === ".") {
-        if (btn === ".") {
-          setDisplay("0.");
-        } else {
-          setDisplay(btn);
-        }
-
-        setCalculation("");
-        setFirstOperand(null);
-        setOperator(null);
-        setWaitingForSecondOperand(false);
+      if (/^\d$/.test(btn)) {
+        clear();
+        setDisplay(btn);
+      } else if (btn === ".") {
+        clear();
+        setDisplay("0.");
       }
-
       return;
     }
 
     switch (btn) {
       case "+/-":
-        toggleSign();
+        if (display !== "0") {
+          setDisplay(
+            display.startsWith("-")
+              ? display.slice(1)
+              : "-" + display
+          );
+        }
         break;
       case "%":
-        inputPercent();
+        setDisplay(String(parseFloat(display) / 100));
         break;
       case ".":
         inputDecimal();
         break;
       case "=":
-        handleEquals();
+        if (operator !== null && firstOperand !== null && !waiting) {
+          operation("=");
+        }
         break;
       case "+":
       case "-":
       case "*":
       case "/":
-        performOperation(btn);
+        operation(btn);
         break;
       default:
         inputDigit(parseInt(btn, 10));
-        break;
     }
   };
 
-  const getButtonStyle = (btn) => {
+  const buttonColor = (btn) => {
     if (btn === "AC") return styles.clearButton;
-
-    if (btn === "+/-" || btn === "%") {
-      return styles.utilityButton;
-    }
-
+    if (btn === "+/-") return styles.signButton;
+    if (btn === "%") return styles.percentButton;
     if (btn === "=") return styles.equalsButton;
-
     if (["/", "*", "-", "+"].includes(btn)) {
       return styles.operatorButton;
     }
-
+    if (btn === ".") return styles.decimalButton;
     return styles.numberButton;
   };
 
-  const getTextStyle = (btn) => {
+  const textColor = (btn) => {
     if (btn === "AC") return styles.clearText;
-
-    if (btn === "+/-" || btn === "%") {
-      return styles.utilityText;
-    }
-
+    if (btn === "+/-") return styles.signText;
+    if (btn === "%") return styles.percentText;
     if (btn === "=") return styles.equalsText;
-
     if (["/", "*", "-", "+"].includes(btn)) {
       return styles.operatorText;
     }
-
     return styles.numberText;
   };
 
@@ -278,245 +207,306 @@ export default function App() {
     ["0", ".", "="],
   ];
 
+  const gap = 9;
+  const sidePadding = 20;
+  const buttonWidth = Math.min(
+    82,
+    (width - sidePadding * 2 - gap * 3) / 4
+  );
+
   return (
-    <View style={styles.container}>
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor="#FFFFFF"
-      />
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" backgroundColor="#10121F" />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Calculator</Text>
-        </View>
-      </View>
-
-      {/* Calculation and Result Display */}
-      <View style={styles.displayContainer}>
-
-        <View style={styles.displayBox}>
-          <Text
-            style={styles.calculationText}
-            numberOfLines={2}
-            adjustsFontSizeToFit
-            minimumFontScale={0.6}
-          >
-            {calculation || " "}
-          </Text>
-
-          <View style={styles.displayDivider} />
-
-          <Text style={styles.resultLabel}>RESULT</Text>
-
-          <Text
-            style={styles.displayText}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.35}
-          >
-            {display}
-          </Text>
-        </View>
-
-        <View style={styles.displayUnderline} />
-      </View>
-    
-      <View style={styles.buttonsContainer}>
-        {rows.map((row, rowIndex) => (
-          <View key={rowIndex} style={styles.row}>
-            {row.map((btn) => (
-              <TouchableOpacity
-                key={btn}
-                style={[
-                  styles.button,
-                  getButtonStyle(btn),
-                  btn === "0" && styles.zeroButton,
-                ]}
-                onPress={() => handlePress(btn)}
-                activeOpacity={0.65}
-              >
-                <Text style={getTextStyle(btn)}>{btn}</Text>
-              </TouchableOpacity>
-            ))}
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.brand}>RAIN'S CALCULATOR</Text>
+            <Text style={styles.title}>Calculator</Text>
+            <Text style={styles.subtitle}>Your daily smart calculator</Text>
           </View>
-        ))}
-      </View>
 
-    </View>
+          <View style={styles.proBadge}>
+            <Text style={styles.proText}>PRO ✦</Text>
+          </View>
+        </View>
+
+        <View style={styles.displayArea}>
+          <View style={styles.displayCard}>
+            <Text
+              style={styles.expression}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.65}
+            >
+              {calculation || "Let's calculate"}
+            </Text>
+
+            <View style={styles.divider} />
+
+            <Text style={styles.resultLabel}>RESULT</Text>
+
+            <Text
+              style={[
+                styles.result,
+                compact && { fontSize: 46 },
+                display.length > 9 && { fontSize: 38 },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.35}
+            >
+              {display}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.keypad}>
+          {rows.map((row, rowIndex) => (
+            <View
+              key={rowIndex}
+              style={[
+                styles.row,
+                { gap, marginBottom: compact ? 8 : 11 },
+              ]}
+            >
+              {row.map((btn) => (
+                <TouchableOpacity
+                  key={btn}
+                  activeOpacity={0.72}
+                  onPress={() => handlePress(btn)}
+                  style={[
+                    styles.button,
+                    buttonColor(btn),
+                    {
+                      width: btn === "0" ? buttonWidth * 2 + gap : buttonWidth,
+                      height: compact ? 57 : 67,
+                    },
+                  ]}
+                >
+                  <Text style={textColor(btn)}>
+                    {btn === "*" ? "×" : btn === "/" ? "÷" : btn}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ))}
+        </View>
+
+        <Text style={styles.footer}>SIMPLE  •  FAST  •  ACCURATE</Text>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 20,
-    paddingVertical: 40,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-  appLabel: {
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 3,
-    color: "#8B5CF6",
-    marginBottom: 5,
-  },
-  title: {
-    fontSize: 30,
-    fontWeight: "800",
-    color: "#171725",
-    letterSpacing: -1,
-  },
-  displayContainer: {
-    flex: 2,
-    justifyContent: "flex-end",
-    alignItems: "flex-end",
-    paddingBottom: 22,
-  },
-  displayBox: {
-    width: "100%",
-    minHeight: 145,
-    justifyContent: "center",
-    alignItems: "flex-end",
-    backgroundColor: "#F8FAFF",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#E9E8FF",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  calculationText: {
-    width: "100%",
-    minHeight: 32,
-    color: "#8B5CF6",
-    fontSize: 24,
-    fontWeight: "600",
-    textAlign: "right",
-    marginBottom: 12,
-  },
-  displayDivider: {
-    width: "100%",
-    height: 1,
-    backgroundColor: "#E9E8FF",
-    marginBottom: 12,
-  },
-  resultLabel: {
-    alignSelf: "flex-end",
-    color: "#A1A1B5",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 2,
-    marginBottom: 4,
-  },
-  displayText: {
-    color: "#171725",
-    fontSize: 56,
-    fontWeight: "300",
-    letterSpacing: -2,
-  },
-  displayUnderline: {
-    width: "100%",
-    height: 4,
-    borderRadius: 4,
-    backgroundColor: "#B7FF3C",
-    marginTop: 12,
-    alignSelf: "center",
-  },
-  keypadHint: {
-    color: "#A1A1B5",
-    fontSize: 11,
+    backgroundColor: "#10121F",
   },
 
-  buttonsContainer: {
-    flex: 5,
+  container: {
+    flex: 1,
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 12,
     paddingBottom: 8,
   },
-  row: {
-    flex: 1,
+
+  header: {
+    width: "100%",
     flexDirection: "row",
-    marginVertical: 5,
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 12,
+    paddingBottom: 10,
   },
-  button: {
+
+  brand: {
+    color: "#A78BFA",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 2.5,
+    marginBottom: 5,
+  },
+
+  title: {
+    color: "#FFFFFF",
+    fontSize: 30,
+    fontWeight: "800",
+    letterSpacing: -0.8,
+  },
+
+  subtitle: {
+    color: "#8D93AC",
+    fontSize: 11,
+    marginTop: 4,
+  },
+
+  proBadge: {
+    backgroundColor: "#28213F",
+    borderWidth: 1,
+    borderColor: "#7C5CFC",
+    borderRadius: 14,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+  },
+
+  proText: {
+    color: "#D4C5FF",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+
+  displayArea: {
     flex: 1,
-    marginHorizontal: 5,
-    borderRadius: 22,
+    width: "100%",
+    justifyContent: "flex-end",
+    paddingBottom: 16,
+  },
+
+  displayCard: {
+    minHeight: 155,
+    width: "100%",
+    backgroundColor: "#1B2034",
+    borderRadius: 25,
+    borderWidth: 1,
+    borderColor: "#303852",
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    justifyContent: "center",
+    alignItems: "flex-end",
+  },
+
+  expression: {
+    width: "100%",
+    color: "#B8A4FF",
+    textAlign: "right",
+    fontSize: 19,
+    fontWeight: "600",
+    minHeight: 29,
+  },
+
+  divider: {
+    width: "100%",
+    height: 1,
+    backgroundColor: "#353C56",
+    marginVertical: 13,
+  },
+
+  resultLabel: {
+    color: "#8991AD",
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 3,
+    marginBottom: 4,
+  },
+
+  result: {
+    color: "#FFFFFF",
+    fontSize: 53,
+    fontWeight: "300",
+    letterSpacing: -1.5,
+  },
+
+  keypad: {
+    width: "100%",
+    alignItems: "center",
+    paddingTop: 4,
+  },
+
+  row: {
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "center",
+  },
+
+  button: {
+    borderRadius: 23,
     justifyContent: "center",
     alignItems: "center",
-    minHeight: 45,
-    shadowColor: "#777799",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 7,
-    elevation: 2,
+    borderWidth: 1,
   },
 
   numberButton: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#ECECF5",
+    backgroundColor: "#263657",
+    borderColor: "#354C75",
   },
+
   numberText: {
-    color: "#29293D",
-    fontSize: 27,
-    fontWeight: "600",
+    color: "#EAF2FF",
+    fontSize: 25,
+    fontWeight: "700",
   },
 
   clearButton: {
-    backgroundColor: "#D9FF8A",
-    borderWidth: 1,
-    borderColor: "#B7FF3C",
+    backgroundColor: "#592D4A",
+    borderColor: "#A64E7A",
   },
+
   clearText: {
-    color: "#355600",
+    color: "#FFC1DE",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+
+  signButton: {
+    backgroundColor: "#204D50",
+    borderColor: "#347F7D",
+  },
+
+  signText: {
+    color: "#A6FFF0",
     fontSize: 17,
     fontWeight: "800",
   },
 
-  utilityButton: {
-    backgroundColor: "#F0E9FF",
-    borderWidth: 1,
-    borderColor: "#DCCBFF",
-  },
-  utilityText: {
-    color: "#7742D8",
-    fontSize: 20,
-    fontWeight: "700",
+  percentButton: {
+    backgroundColor: "#34552E",
+    borderColor: "#5D914A",
   },
 
-  operatorButton: {
-    backgroundColor: "#E7FBFF",
-    borderWidth: 1,
-    borderColor: "#9CEFFF",
-  },
-  operatorText: {
-    color: "#009CB5",
-    fontSize: 29,
-    fontWeight: "700",
-  },
-
-  equalsButton: {
-    backgroundColor: "#B7FF3C",
-    borderWidth: 1,
-    borderColor: "#A1F020",
-    shadowColor: "#9BEB24",
-    shadowOpacity: 0.28,
-    shadowRadius: 9,
-    elevation: 5,
-  },
-  equalsText: {
-    color: "#243900",
-    fontSize: 30,
+  percentText: {
+    color: "#C7FFAD",
+    fontSize: 19,
     fontWeight: "800",
   },
 
-  zeroButton: {
-    flex: 2,
-    alignItems: "flex-start",
-    paddingLeft: 28,
+  operatorButton: {
+    backgroundColor: "#392B68",
+    borderColor: "#7258C7",
+  },
+
+  operatorText: {
+    color: "#D9CCFF",
+    fontSize: 28,
+    fontWeight: "800",
+  },
+
+  decimalButton: {
+    backgroundColor: "#34445D",
+    borderColor: "#536B8D",
+  },
+
+  equalsButton: {
+    backgroundColor: "#F28C45",
+    borderColor: "#FFB26F",
+  },
+
+  equalsText: {
+    color: "#FFFFFF",
+    fontSize: 29,
+    fontWeight: "900",
+  },
+
+  footer: {
+    color: "#717A97",
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 2,
+    textAlign: "center",
+    paddingTop: 8,
+    paddingBottom: 4,
   },
 });
